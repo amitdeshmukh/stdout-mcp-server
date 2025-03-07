@@ -94,7 +94,7 @@ app2 > /tmp/stdout_pipe &
 
 ### Querying Logs
 
-Use the `get-logs` tool in your MCP client to retrieve and filter logs:
+Your AI will use the `get-logs` tool in your MCP client to retrieve and filter logs:
 
 ```typescript
 // Get last 50 logs

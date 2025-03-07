@@ -103,7 +103,7 @@ async function startFileWatcher(): Promise<void> {
               // Just store the raw message with timestamp
               const entry: LogEntry = {
                 timestamp: new Date().toISOString(),
-                message: line.trim()
+                message: line.trim(),
               };
               logStore.push(entry);
               console.log(JSON.stringify(entry));
