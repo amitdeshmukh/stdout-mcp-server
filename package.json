@@ -1,17 +1,18 @@
 {
   "type": "module",
   "name": "stdout-mcp-server",
-  "version": "1.0.0",
+  "version": "1.0.6",
   "main": "index.js",
   "scripts": {
-    "build": "rm -rf build && npm run lint:fix && tsc && node -e \"require('fs').chmodSync('build/index.js', '755')\"",
+    "build": "rm -rf build && npm run lint:fix && tsc && echo '#!/usr/bin/env node' > temp && cat build/index.js >> temp && mv temp build/index.js && chmod +x build/index.js",
     "lint": "eslint src --ext .ts",
     "lint:fix": "eslint src --ext .ts --fix",
     "format": "prettier --write \"src/**/*.ts\"",
-    "format:check": "prettier --check \"src/**/*.ts\""
+    "format:check": "prettier --check \"src/**/*.ts\"",
+    "release": "npm run build && npm publish --access public"
   },
   "bin": {
-    "console-log-mcp": "./build/index.js"
+    "stdout-mcp-server": "build/index.js"
   },
   "files": [
     "build"

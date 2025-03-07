@@ -13,14 +13,28 @@ interface NodeError extends Error {
   code?: string;
 }
 
+interface LogEntry {
+  timestamp: string;
+  message: string;
+}
+
 const PIPE_NAME =
   process.platform === "win32"
     ? "\\\\.\\pipe\\stdout_pipe" // Windows named pipe in standard location
     : "/tmp/stdout_pipe"; // Unix pipe in /tmp directory
 const MAX_STORED_LOGS = 100;
 
-// Store logs in memory
-const logStore: string[] = [];
+// Store logs in memory as structured objects
+const logStore: LogEntry[] = [];
+
+// Helper function to log in JSON format
+function logJson(message: string): void {
+  const entry: LogEntry = {
+    timestamp: new Date().toISOString(),
+    message,
+  };
+  console.log(JSON.stringify(entry));
+}
 
 // Create server instance
 const server = new McpServer({
@@ -36,7 +50,7 @@ async function createNamedPipe(): Promise<void> {
     // Check if pipe already exists
     try {
       await access(PIPE_NAME);
-      console.info("Named pipe already exists");
+      logJson("Named pipe already exists");
       return;
     } catch {
       // Pipe doesn't exist, continue to create it
@@ -51,9 +65,9 @@ async function createNamedPipe(): Promise<void> {
       // Unix named pipe creation using mkfifo
       await execAsync(`mkfifo ${PIPE_NAME}`);
     }
-    console.info(`Created named pipe at ${PIPE_NAME}`);
+    logJson(`Created named pipe at ${PIPE_NAME}`);
   } catch (error) {
-    console.error("Failed to create named pipe:", error);
+    logJson(`Failed to create named pipe: ${error}`);
     throw error;
   }
 }
@@ -75,7 +89,7 @@ async function startFileWatcher(): Promise<void> {
       try {
         isReading = true;
         currentStream = createReadStream(PIPE_NAME, { encoding: "utf8" });
-        console.info("Started reading from log pipe");
+        logJson("Started reading from log pipe");
 
         currentStream.on("data", (data) => {
           buffer += data;
@@ -86,9 +100,13 @@ async function startFileWatcher(): Promise<void> {
 
           for (const line of lines) {
             if (line.trim()) {
-              const logEntry = `[${new Date().toISOString()}] ${line}`;
-              logStore.push(logEntry);
-              console.info("📝 New log entry:", logEntry);
+              // Just store the raw message with timestamp
+              const entry: LogEntry = {
+                timestamp: new Date().toISOString(),
+                message: line.trim()
+              };
+              logStore.push(entry);
+              console.log(JSON.stringify(entry));
 
               if (logStore.length > MAX_STORED_LOGS) {
                 logStore.shift();
@@ -99,16 +117,16 @@ async function startFileWatcher(): Promise<void> {
 
         currentStream.on("error", (error: NodeError) => {
           if (error.code === "ENOENT") {
-            console.info("Waiting for named pipe to be created...");
+            logJson("Waiting for named pipe to be created...");
           } else {
-            console.error("Error reading from pipe:", error);
+            logJson(`Error reading from pipe: ${error}`);
           }
           currentStream = null;
           isReading = false;
         });
 
         currentStream.on("end", () => {
-          console.info("Pipe read stream ended");
+          logJson("Pipe read stream ended");
           currentStream = null;
           isReading = false;
 
@@ -116,7 +134,7 @@ async function startFileWatcher(): Promise<void> {
           // The watcher will handle reconnection when new data is available
         });
       } catch (error) {
-        console.error("Failed to create read stream:", error);
+        logJson(`Failed to create read stream: ${error}`);
         currentStream = null;
         isReading = false;
       }
@@ -131,15 +149,15 @@ async function startFileWatcher(): Promise<void> {
     });
 
     watcher.on("error", (error) => {
-      console.error("Watch error:", error);
+      logJson(`Watch error: ${error}`);
     });
 
-    console.info(`Watching for logs at ${PIPE_NAME}`);
+    logJson(`Watching for logs at ${PIPE_NAME}`);
 
     // Initial read
     startReading();
   } catch (error) {
-    console.error("Failed to start file watcher:", error);
+    logJson(`Failed to start file watcher: ${error}`);
     process.exit(1);
   }
 }
@@ -162,16 +180,14 @@ server.tool(
       let logs = [...logStore];
 
       if (filter) {
-        logs = logs.filter((line) =>
-          line.toLowerCase().includes(filter.toLowerCase()),
+        logs = logs.filter((entry) =>
+          entry.message.toLowerCase().includes(filter.toLowerCase()),
         );
       }
 
       if (since) {
-        logs = logs.filter((line) => {
-          const timestamp = new Date(
-            line.slice(1, line.indexOf("]")),
-          ).getTime();
+        logs = logs.filter((entry) => {
+          const timestamp = new Date(entry.timestamp).getTime();
           return timestamp > since;
         });
       }
@@ -183,12 +199,12 @@ server.tool(
         content: [
           {
             type: "text",
-            text: logs.join("\n"),
+            text: JSON.stringify(logs, null, 2),
           },
         ],
       };
     } catch (error) {
-      console.error("Error retrieving logs:", error);
+      logJson(`Error retrieving logs: ${error}`);
       throw new Error("Failed to retrieve logs");
     }
   },
@@ -203,14 +219,14 @@ async function main(): Promise<void> {
     const transport = new StdioServerTransport();
     await server.connect(transport);
 
-    console.info("Pipe log MCP server started");
+    logJson("Pipe log MCP server started");
   } catch (error) {
-    console.error("Failed to start server:", error);
+    logJson(`Failed to start server: ${error}`);
     throw error;
   }
 }
 
 main().catch((error) => {
-  console.error("Fatal error in main():", error);
+  logJson(`Fatal error in main(): ${error}`);
   process.exit(1);
 });
